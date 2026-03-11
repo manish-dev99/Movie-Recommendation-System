@@ -1,89 +1,88 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.neighbors import NearestNeighbors
 
-# ---------------- UI SETTINGS ---------------- #
-
 st.set_page_config(
-    page_title="Movie Recommendation System",
+    page_title="Netflix Movie Recommender",
     page_icon="🎬",
     layout="wide"
 )
 
+# ---------- NETFLIX STYLE CSS ---------- #
+
 st.markdown("""
 <style>
-.big-title {
-    font-size:40px;
-    font-weight:bold;
-    text-align:center;
-    color:#FF4B4B;
+
+body{
+background-color:#141414;
+color:white;
 }
 
-.movie-card {
-    background-color:#1E1E1E;
-    padding:15px;
-    border-radius:10px;
-    margin-bottom:10px;
+.netflix-header{
+font-size:50px;
+font-weight:bold;
+color:#E50914;
+text-align:center;
+}
+
+.subtitle{
+text-align:center;
+color:gray;
+margin-bottom:40px;
+}
+
+.movie-card{
+background-color:#1f1f1f;
+padding:20px;
+border-radius:10px;
+transition:0.3s;
+}
+
+.movie-card:hover{
+transform:scale(1.05);
+background-color:#2b2b2b;
 }
 
 .movie-title{
-    font-size:20px;
-    font-weight:bold;
+font-size:18px;
+font-weight:bold;
 }
 
 .rating{
-    color:#FFD700;
+color:#FFD700;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<p class="big-title">🎬 Movie Recommendation System</p>', unsafe_allow_html=True)
+st.markdown('<div class="netflix-header">NETFLIX MOVIE RECOMMENDER</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Find movies similar to your favorites</div>', unsafe_allow_html=True)
 
-st.write("Find movies similar to your favorite film.")
-
-# ---------------- LOAD DATA ---------------- #
+# ---------- LOAD DATA ---------- #
 
 @st.cache_data
 def load_data():
-
+    
     df = pd.read_csv("movies.csv")
-
-    df['Number of Rators'] = (
-        df['Number of Rators']
-        .str.replace("\xa0(", "", regex=False)
-        .str.replace(")", "", regex=False)
-        .str.replace("(", "", regex=False)
-    )
-
-    df['Number of Rators'] = df['Number of Rators'].fillna("0")
-
-    df['Number of Rators'] = (
-        df['Number of Rators']
-        .str.replace("K", "000", regex=False)
-        .astype(float)
-        .astype(int)
-    )
-
-    df['Ratings'] = df['Ratings'].str.replace("N/a", "0")
-
+    
     df['Film Name'] = df['Film Name'].str.replace(r'^\d+\.?\s*', '', regex=True)
-
+    
     df = df.dropna(subset=['Summary']).reset_index(drop=True)
-
+    
     df['Summary'] = df['Summary'].str.lower().str.strip()
-
+    
+    df['Ratings'] = df['Ratings'].str.replace("N/a","0")
+    
     return df
 
 df = load_data()
 
-# ---------------- NLP MODEL ---------------- #
+# ---------- MODEL ---------- #
 
 @st.cache_resource
 def create_model():
-
+    
     tfidf = TfidfVectorizer(stop_words="english")
     tf_matrix = tfidf.fit_transform(df['Summary'])
 
@@ -99,20 +98,20 @@ def create_model():
 
 tf_matrix, knn = create_model()
 
-# ---------------- RECOMMEND FUNCTION ---------------- #
+# ---------- RECOMMENDATION FUNCTION ---------- #
 
-def recommend(movie_name):
+def recommend(movie):
 
-    movie_name = movie_name.lower()
+    movie = movie.lower()
 
-    if movie_name not in df['Film Name'].str.lower().values:
+    if movie not in df['Film Name'].str.lower().values:
         return None
 
-    index = df[df['Film Name'].str.lower()==movie_name].index[0]
+    index = df[df['Film Name'].str.lower()==movie].index[0]
 
     distance, indices = knn.kneighbors(tf_matrix[index])
 
-    movies = []
+    results = []
 
     for i in range(1,len(indices[0])):
 
@@ -122,47 +121,52 @@ def recommend(movie_name):
         rating = df.iloc[movie_index]['Ratings']
         year = df.iloc[movie_index]['Year']
 
-        movies.append((name,rating,year))
+        results.append((name,rating,year))
 
-    return movies
+    return results
 
-
-# ---------------- UI ---------------- #
+# ---------- UI ---------- #
 
 movie_list = sorted(df['Film Name'].unique())
 
 selected_movie = st.selectbox(
-    "🎥 Select a Movie",
-    movie_list
+"🎥 Choose a movie",
+movie_list
 )
 
 if st.button("Recommend Movies 🍿"):
 
-    results = recommend(selected_movie)
+    recommendations = recommend(selected_movie)
 
-    if results is None:
-
+    if recommendations is None:
         st.error("Movie not found")
 
     else:
 
         st.subheader("Recommended Movies")
 
-        for name,rating,year in results:
+        cols = st.columns(5)
 
-            imdb_link = f"https://www.google.com/search?q={name}+movie"
+        for i,(name,rating,year) in enumerate(recommendations):
 
-            st.markdown(f"""
-            <div class="movie-card">
+            with cols[i]:
 
-            <div class="movie-title">{name}</div>
+                link = f"https://www.google.com/search?q={name}+movie"
 
-            ⭐ Rating: <span class="rating">{rating}</span>  
-            📅 Year: {year}
+                st.markdown(f"""
+                <div class="movie-card">
 
-            <br>
+                <div class="movie-title">{name}</div>
 
-            🔗 <a href="{imdb_link}" target="_blank">View Movie</a>
+                ⭐ <span class="rating">{rating}</span>
 
-            </div>
-            """, unsafe_allow_html=True)
+                <br>
+
+                📅 {year}
+
+                <br><br>
+
+                <a href="{link}" target="_blank">View Movie</a>
+
+                </div>
+                """, unsafe_allow_html=True)
